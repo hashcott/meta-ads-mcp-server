@@ -1,51 +1,72 @@
 # Meta Ads MCP Server
 
-MCP (Model Context Protocol) server for the Meta (Facebook) Ads API, written in TypeScript. Provides 24 tools to manage and analyze ad accounts, campaigns, ad sets, ads, creatives, insights, and activity logs via the Meta Graph API v22.0.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/meta-ads-mcp-server?style=flat-square&color=blue&label=npm" alt="npm version" />
+  <img src="https://img.shields.io/npm/dm/meta-ads-mcp-server?style=flat-square&color=green" alt="npm downloads" />
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen?style=flat-square&logo=node.js" alt="Node.js version" />
+  <img src="https://img.shields.io/badge/Meta%20Graph%20API-v22.0-blue?style=flat-square&logo=meta" alt="Meta Graph API" />
+  <img src="https://img.shields.io/badge/MCP-compatible-purple?style=flat-square" alt="MCP compatible" />
+  <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/github/actions/workflow/status/hashcott/meta-ads-mcp/ci.yml?style=flat-square&label=CI" alt="CI status" />
+</p>
 
-Supports both **local stdio** (for Cursor/Claude Desktop) and **remote HTTP** (for Claude.ai custom connectors and other remote MCP clients).
+<p align="center">
+  MCP (Model Context Protocol) server for the <strong>Meta (Facebook) Ads API</strong>, written in TypeScript.<br/>
+  Provides <strong>24 tools</strong> to manage and analyze ad accounts, campaigns, ad sets, ads, creatives, insights, and activity logs via the Meta Graph API v22.0.
+</p>
+
+<p align="center">
+  Supports <strong>local stdio</strong> (Cursor / Claude Desktop) and <strong>remote HTTP</strong> (Claude.ai custom connectors).
+</p>
+
+---
 
 ## Features
 
-- **24 Tools** covering the full Meta Ads management hierarchy
-- **Accounts**: List ad accounts, get account details
-- **Insights**: Performance analytics at account, campaign, ad set, and ad level
-- **Campaigns**: Get by ID, list by ad account (with filtering/pagination)
-- **Ad Sets**: Get by ID, batch lookup, list by ad account/campaign
-- **Ads**: Get by ID, list by ad account/campaign/ad set
-- **Creatives**: Get creative details, list creatives by ad or by ad account
-- **Media**: List ad images, generate ad previews across placements
-- **Activities**: Change history for ad accounts and ad sets
-- **Pagination**: Utility to fetch paginated result pages
+| Category | Tools |
+|----------|-------|
+| **Accounts** | List ad accounts, get account details |
+| **Insights** | Performance analytics at account, campaign, ad set, and ad level |
+| **Campaigns** | Get by ID, list by ad account (with filtering/pagination) |
+| **Ad Sets** | Get by ID, batch lookup, list by ad account/campaign |
+| **Ads** | Get by ID, list by ad account/campaign/ad set |
+| **Creatives** | Get creative details, list creatives by ad or by ad account |
+| **Media** | List ad images, generate ad previews across placements |
+| **Activities** | Change history for ad accounts and ad sets |
+| **Pagination** | Utility to fetch paginated result pages |
+
+---
 
 ## Requirements
 
-- Node.js >= 18
+- **Node.js** >= 18
 - A Meta (Facebook) Access Token with `ads_read` permission
+
+---
 
 ## Transport Modes
 
 | Mode | Use case | How to enable |
 |------|----------|---------------|
-| `stdio` (default) | Cursor, Claude Desktop, local tools | Default — no extra config needed |
+| `stdio` *(default)* | Cursor, Claude Desktop, local tools | Default — no config needed |
 | `http` | Claude.ai remote connectors, multi-client | `TRANSPORT=http` env var |
+
+---
 
 ## Installation
 
 ```bash
-# Install dependencies
 npm install
-
-# Build the TypeScript project
 npm run build
 ```
 
+---
+
 ## Authentication
 
-You need a Meta User Access Token with at minimum the `ads_read` permission. You can generate one from the [Meta for Developers](https://developers.facebook.com/tools/explorer/) Graph API Explorer.
+Generate a Meta User Access Token from the [Meta Graph API Explorer](https://developers.facebook.com/tools/explorer/) with at minimum the `ads_read` permission.
 
-Pass the token using either method:
-
-**CLI argument (recommended for Cursor/Claude Desktop):**
+**CLI argument:**
 ```bash
 node dist/index.js --access-token YOUR_META_ACCESS_TOKEN
 ```
@@ -56,28 +77,28 @@ export META_ADS_ACCESS_TOKEN=YOUR_META_ACCESS_TOKEN
 node dist/index.js
 ```
 
-## Using with npx (no install required)
+---
 
-Once published to npm, run directly with:
+## Quick Start with npx
 
 ```bash
 npx meta-ads-mcp-server --access-token YOUR_META_ACCESS_TOKEN
 ```
 
+---
+
 ## Remote HTTP Server
 
-Run as a public HTTP server for use with Claude.ai custom connectors or any remote MCP client:
-
 ```bash
-# Start HTTP server on port 3000 (default)
-TRANSPORT=http META_ADS_ACCESS_TOKEN=YOUR_META_ACCESS_TOKEN node dist/index.js
+# Default port 3000
+TRANSPORT=http META_ADS_ACCESS_TOKEN=YOUR_TOKEN node dist/index.js
 
 # Custom port
-TRANSPORT=http META_ADS_ACCESS_TOKEN=YOUR_META_ACCESS_TOKEN PORT=8080 node dist/index.js
+TRANSPORT=http META_ADS_ACCESS_TOKEN=YOUR_TOKEN PORT=8080 node dist/index.js
 ```
 
-Endpoints:
-- `POST /mcp` — MCP protocol endpoint (use this as your connector URL)
+**Endpoints:**
+- `POST /mcp` — MCP protocol endpoint
 - `GET /health` — Health check (`{"status":"ok"}`)
 - `GET /.well-known/oauth-protected-resource` — OAuth 2.1 discovery (RFC 9728)
 
@@ -138,11 +159,11 @@ OAuth is **opt-in**: without `OAUTH_ENABLED=true` the server runs unauthenticate
 
 ### Claude.ai Custom Connector
 
-1. Go to **Settings > Connectors > Add custom connector**
-2. Set the remote MCP server URL to: `https://your-domain.com/mcp`
+1. Go to **Settings → Connectors → Add custom connector**
+2. Set URL to: `https://your-domain.com/mcp`
 3. Click **Add**
 
-### Expose locally with ngrok (for testing)
+### Local testing with ngrok
 
 ```bash
 # Terminal 1 — start the server
@@ -156,30 +177,23 @@ Use the ngrok HTTPS URL (e.g. `https://xxxx.ngrok-free.app/mcp`) as your connect
 
 ### Deploy to cloud
 
-Set these environment variables on your hosting platform (Railway, Render, Fly.io, etc.):
-
 | Variable | Value |
 |----------|-------|
 | `TRANSPORT` | `http` |
 | `META_ADS_ACCESS_TOKEN` | Your Meta access token |
-| `PORT` | Port assigned by platform (usually automatic) |
+| `PORT` | Assigned by platform (auto) |
+
+---
 
 ## Cursor / Claude Desktop Configuration
 
-Add to your MCP client configuration:
-
-**Via npx (recommended — no local install needed):**
+**Via npx (recommended):**
 ```json
 {
   "mcpServers": {
     "meta-ads": {
       "command": "npx",
-      "args": [
-        "-y",
-        "meta-ads-mcp-server",
-        "--access-token",
-        "YOUR_META_ACCESS_TOKEN"
-      ]
+      "args": ["-y", "meta-ads-mcp-server", "--access-token", "YOUR_META_ACCESS_TOKEN"]
     }
   }
 }
@@ -191,11 +205,7 @@ Add to your MCP client configuration:
   "mcpServers": {
     "meta-ads": {
       "command": "node",
-      "args": [
-        "/path/to/meta-ads-mcp/dist/index.js",
-        "--access-token",
-        "YOUR_META_ACCESS_TOKEN"
-      ]
+      "args": ["/path/to/meta-ads-mcp/dist/index.js", "--access-token", "YOUR_META_ACCESS_TOKEN"]
     }
   }
 }
@@ -216,20 +226,9 @@ Add to your MCP client configuration:
 }
 ```
 
-## Development
+---
 
-```bash
-# Watch mode (auto-recompile on change)
-npm run dev
-
-# Clean build artifacts
-npm run clean
-
-# Rebuild from scratch
-npm run clean && npm run build
-```
-
-## Available Tools
+## Available Tools (24)
 
 | Tool | Description |
 |------|-------------|
@@ -258,44 +257,61 @@ npm run clean && npm run build
 | `meta_ads_get_activities_by_adset` | Change log for an ad set |
 | `meta_ads_fetch_pagination_url` | Fetch next/previous page of results |
 
+---
+
+## Pagination
+
+Many list tools return paginated results. Use `meta_ads_fetch_pagination_url` to iterate pages:
+
+```
+1. meta_ads_get_campaigns_by_adaccount  →  first page
+2. response.paging.next exists?  →  meta_ads_fetch_pagination_url(url=response.paging.next)
+3. Repeat until no paging.next
+```
+
+---
+
+## Development
+
+```bash
+npm run dev        # Watch mode — auto-recompile on change
+npm run build      # Compile TypeScript
+npm run clean      # Remove dist/
+npm run clean && npm run build  # Full rebuild
+```
+
+---
+
 ## Project Structure
 
 ```
 meta-ads-mcp/
-  src/
-    index.ts              # Entry point
-    constants.ts          # API version, URLs, defaults
-    types.ts              # TypeScript interfaces
-    services/
-      graph-api.ts        # API client, error handling, param builders
-    schemas/
-      common.ts           # Shared Zod schemas (pagination, filtering, etc.)
-      insights.ts         # Insights-specific Zod schemas
-    tools/
-      accounts.ts         # Account tools
-      insights.ts         # Insights tools
-      campaigns.ts        # Campaign tools
-      adsets.ts           # Ad set tools
-      ads.ts              # Ad tools
-      creatives.ts        # Creative tools
-      media.ts            # Ad images and ad previews tools
-      activities.ts       # Activity log tools
-      pagination.ts       # Pagination utility tool
-  dist/                   # Compiled JavaScript (after npm run build)
-  package.json
-  tsconfig.json
+├── src/
+│   ├── index.ts              # Entry point
+│   ├── constants.ts          # API version, URLs, defaults
+│   ├── types.ts              # TypeScript interfaces
+│   ├── services/
+│   │   └── graph-api.ts      # API client, error handling, param builders
+│   ├── schemas/
+│   │   ├── common.ts         # Shared Zod schemas (pagination, filtering)
+│   │   └── insights.ts       # Insights-specific Zod schemas
+│   └── tools/
+│       ├── accounts.ts
+│       ├── insights.ts
+│       ├── campaigns.ts
+│       ├── adsets.ts
+│       ├── ads.ts
+│       ├── creatives.ts
+│       ├── media.ts
+│       ├── activities.ts
+│       └── pagination.ts
+├── dist/                     # Compiled JavaScript (after build)
+├── package.json
+└── tsconfig.json
 ```
 
-## Pagination
-
-Many list tools return paginated results. When a response contains a `paging.next` URL, use `meta_ads_fetch_pagination_url` to retrieve the next page:
-
-```
-1. Call meta_ads_get_campaigns_by_adaccount → get first page
-2. If response.paging.next exists → call meta_ads_fetch_pagination_url(url=response.paging.next)
-3. Repeat until no paging.next
-```
+---
 
 ## License
 
-MIT
+[MIT](LICENSE)
