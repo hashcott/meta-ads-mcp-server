@@ -15,10 +15,14 @@
  *   TRANSPORT=http META_ADS_ACCESS_TOKEN=<token> PORT=3000 node dist/index.js
  */
 
+import { createRequire } from "module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 import { registerAccountTools } from "./tools/accounts.js";
 import { registerInsightsTools } from "./tools/insights.js";
 import { registerCampaignTools } from "./tools/campaigns.js";
@@ -32,7 +36,7 @@ import { getAccessToken } from "./services/graph-api.js";
 
 const server = new McpServer({
   name: "meta-ads-mcp-server",
-  version: "1.1.0",
+  version,
 });
 
 registerAccountTools(server);
@@ -90,7 +94,7 @@ async function runHTTP(): Promise<void> {
 
   // Health check endpoint
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", server: "meta-ads-mcp-server", version: "1.1.0" });
+    res.json({ status: "ok", server: "meta-ads-mcp-server", version });
   });
 
   const port = parseInt(process.env.PORT ?? "3000", 10);
