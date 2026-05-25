@@ -4,7 +4,10 @@ import { FB_GRAPH_URL } from "../constants.js";
 import {
   getAccessToken,
   makeGraphApiCall,
+  makeGraphApiPostCall,
   fetchNode,
+  postNode,
+  deleteNode,
   prepareParams,
   handleApiError,
 } from "../services/graph-api.js";
@@ -236,6 +239,203 @@ Returns:
           { fields, filtering, effective_status, date_format, limit, after, before }
         );
         const data = await makeGraphApiCall(url, params);
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_create_ad",
+    {
+      title: "Create Meta Ad",
+      description: `Create a new ad under an existing ad set, using an existing creative.
+
+Args:
+  - act_id (string): Ad account ID prefixed with 'act_'
+  - name (string)
+  - adset_id (string): Parent ad set ID
+  - creative_id (string): Existing ad creative ID
+  - status (string): Default PAUSED
+  - bid_amount (number, cents)
+  - tracking_specs (object[]): e.g., pixel tracking — [{"action.type":"offsite_conversion","fb_pixel":["PIXEL_ID"]}]
+
+Note: Dynamic Creative creatives require the parent ad set to have is_dynamic_creative=true.`,
+      inputSchema: z.object({
+        act_id: z.string(),
+        name: z.string(),
+        adset_id: z.string(),
+        creative_id: z.string(),
+        status: z.enum(["ACTIVE", "PAUSED"]).optional(),
+        bid_amount: z.number().int().positive().optional(),
+        tracking_specs: z.array(z.record(z.unknown())).optional(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ act_id, name, adset_id, creative_id, status, bid_amount, tracking_specs }) => {
+      try {
+        const params: Record<string, unknown> = {
+          name,
+          adset_id,
+          creative: JSON.stringify({ creative_id }),
+          status: status ?? "PAUSED",
+        };
+        if (bid_amount !== undefined) params.bid_amount = String(bid_amount);
+        if (tracking_specs !== undefined) params.tracking_specs = JSON.stringify(tracking_specs);
+
+        const token = getAccessToken();
+        const url = `${FB_GRAPH_URL}/${act_id}/ads`;
+        const data = await makeGraphApiPostCall(url, { access_token: token, ...params });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_update_ad",
+    {
+      title: "Update Meta Ad",
+      description: `Update an existing ad. Pass only the fields you want to change.
+
+Note: Swapping creative_id on a FLEX ad can fail with error_subcode 3858355 if the new
+creative's asset_feed_spec images don't match its object_story_spec. In that case, create
+a new ad with the new creative and pause the old one.`,
+      inputSchema: z.object({
+        ad_id: z.string(),
+        name: z.string().optional(),
+        status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED", "DELETED"]).optional(),
+        bid_amount: z.number().int().positive().optional(),
+        tracking_specs: z.array(z.record(z.unknown())).optional(),
+        creative_id: z.string().optional().describe("Replace the ad's creative"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ ad_id, name, status, bid_amount, tracking_specs, creative_id }) => {
+      try {
+        const params: Record<string, unknown> = {};
+        if (name !== undefined) params.name = name;
+        if (status !== undefined) params.status = status;
+        if (bid_amount !== undefined) params.bid_amount = String(bid_amount);
+        if (tracking_specs !== undefined) params.tracking_specs = JSON.stringify(tracking_specs);
+        if (creative_id !== undefined) params.creative = JSON.stringify({ creative_id });
+
+        if (Object.keys(params).length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    error:
+                      "No update parameters provided (name, status, bid_amount, tracking_specs, or creative_id)",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        const data = await postNode(ad_id, params);
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_delete_ad",
+    {
+      title: "Delete Meta Ad",
+      description: `Permanently delete an ad. Irreversible — prefer meta_ads_pause_ad if you may
+want to resume the ad later.`,
+      inputSchema: z.object({ ad_id: z.string() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ ad_id }) => {
+      try {
+        const data = await deleteNode(ad_id);
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_pause_ad",
+    {
+      title: "Pause Meta Ad",
+      description: "Pause an ad (sets status to PAUSED).",
+      inputSchema: z.object({ ad_id: z.string() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ ad_id }) => {
+      try {
+        const data = await postNode(ad_id, { status: "PAUSED" });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_resume_ad",
+    {
+      title: "Resume Meta Ad",
+      description: "Resume a paused ad (sets status to ACTIVE).",
+      inputSchema: z.object({ ad_id: z.string() }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ ad_id }) => {
+      try {
+        const data = await postNode(ad_id, { status: "ACTIVE" });
         return {
           content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
           structuredContent: data as Record<string, unknown>,

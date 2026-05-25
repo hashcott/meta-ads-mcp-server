@@ -2,9 +2,11 @@
 /**
  * Meta Ads MCP Server
  *
- * MCP server for the Meta (Facebook) Ads API. Provides 24 tools to manage and
+ * MCP server for the Meta (Facebook) Ads API. Provides 39 tools to manage and
  * analyze ad accounts, campaigns, ad sets, ads, creatives, media assets, insights,
- * and activity logs via the Meta Graph API v22.0.
+ * and activity logs via the Meta Graph API v22.0. Includes read tools plus
+ * write/lifecycle tools (create/update/delete/pause/resume) at the campaign,
+ * ad set, and ad levels.
  *
  * Usage (stdio):
  *   node dist/index.js --access-token <YOUR_META_ACCESS_TOKEN>

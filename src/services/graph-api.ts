@@ -42,6 +42,65 @@ export async function makeGraphApiCall(
 }
 
 /**
+ * Make a POST request to the Facebook Graph API.
+ *
+ * Meta expects form-encoded bodies for writes — not JSON.
+ */
+export async function makeGraphApiPostCall(
+  url: string,
+  params: Record<string, unknown>
+): Promise<unknown> {
+  const form = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    form.append(key, typeof value === "string" ? value : String(value));
+  }
+  const response = await axios.post(url, form.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    timeout: 30000,
+  });
+  return response.data;
+}
+
+/**
+ * Make a DELETE request to the Facebook Graph API.
+ *
+ * Meta returns {"success": true} on a deletion.
+ */
+export async function makeGraphApiDeleteCall(
+  url: string,
+  params: Record<string, unknown>
+): Promise<unknown> {
+  const response = await axios.delete(url, {
+    params,
+    timeout: 30000,
+  });
+  return response.data;
+}
+
+/**
+ * POST to a Graph API node or edge.
+ */
+export async function postNode(
+  path: string,
+  options: PrepareParamsOptions = {}
+): Promise<unknown> {
+  const token = getAccessToken();
+  const url = `${FB_GRAPH_URL}/${path}`;
+  const params = prepareParams({ access_token: token }, options);
+  return makeGraphApiPostCall(url, params);
+}
+
+/**
+ * DELETE a Graph API node.
+ */
+export async function deleteNode(nodeId: string): Promise<unknown> {
+  const token = getAccessToken();
+  const url = `${FB_GRAPH_URL}/${nodeId}`;
+  return makeGraphApiDeleteCall(url, { access_token: token });
+}
+
+/**
  * JSON-encode values that the Graph API expects as JSON strings.
  */
 const JSON_ENCODED_KEYS = new Set([
@@ -52,6 +111,19 @@ const JSON_ENCODED_KEYS = new Set([
   "special_ad_categories",
   "objective",
   "buyer_guarantee_agreement_status",
+  // write-side keys that Meta expects as JSON strings
+  "targeting",
+  "promoted_object",
+  "tracking_specs",
+  "creative",
+  "adset_budgets",
+  "ab_test_control_setups",
+  "bid_constraints",
+  "bid_adjustments",
+  "frequency_control_specs",
+  "regional_regulated_categories",
+  "regional_regulation_identities",
+  "attribution_spec",
 ]);
 
 /**
