@@ -113,6 +113,7 @@ This server uses the **Meta Marketing API**. You need an access token attached t
    - `business_management` — recommended if you operate via Business Manager.
    - `pages_show_list`, `pages_read_engagement` — required for the Pages tools.
 4. Copy the generated token. **This is a short-lived token (~1 hour)** — fine for testing.
+<img width="2070" height="1380" alt="image" src="https://github.com/user-attachments/assets/1bf50e6d-6fa3-44b3-92b3-5f5b296772a7" />
 
 ### Production option — long-lived User token
 
