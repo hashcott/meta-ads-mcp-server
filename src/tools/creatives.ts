@@ -338,8 +338,8 @@ Args:
           description: z.string().optional(),
           call_to_action_type: z.string().optional(),
           object_story_id: z.string().optional(),
-          object_story_spec: z.record(z.unknown()).optional(),
-          asset_feed_spec: z.record(z.unknown()).optional(),
+          object_story_spec: z.record(z.string(), z.unknown()).optional(),
+          asset_feed_spec: z.record(z.string(), z.unknown()).optional(),
           url_tags: z.string().optional(),
         })
         .refine(
@@ -448,7 +448,7 @@ via meta_ads_update_ad(creative_id=...).`,
       inputSchema: z.object({
         creative_id: z.string(),
         name: z.string().optional(),
-        asset_feed_spec: z.record(z.unknown()).optional(),
+        asset_feed_spec: z.record(z.string(), z.unknown()).optional(),
       }),
       annotations: {
         readOnlyHint: false,

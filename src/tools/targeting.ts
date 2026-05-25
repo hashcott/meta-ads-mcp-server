@@ -229,7 +229,7 @@ Returns:
   Estimated audience size bounds plus the raw API response.`,
       inputSchema: z.object({
         act_id: z.string(),
-        targeting: z.record(z.unknown()),
+        targeting: z.record(z.string(), z.unknown()),
         optimization_goal: z.string().optional(),
       }),
       annotations: READ_ANNOTATIONS,

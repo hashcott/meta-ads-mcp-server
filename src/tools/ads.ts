@@ -276,7 +276,7 @@ Note: Dynamic Creative creatives require the parent ad set to have is_dynamic_cr
         creative_id: z.string(),
         status: z.enum(["ACTIVE", "PAUSED"]).optional(),
         bid_amount: z.number().int().positive().optional(),
-        tracking_specs: z.array(z.record(z.unknown())).optional(),
+        tracking_specs: z.array(z.record(z.string(), z.unknown())).optional(),
       }),
       annotations: {
         readOnlyHint: false,
@@ -323,7 +323,7 @@ a new ad with the new creative and pause the old one.`,
         name: z.string().optional(),
         status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED", "DELETED"]).optional(),
         bid_amount: z.number().int().positive().optional(),
-        tracking_specs: z.array(z.record(z.unknown())).optional(),
+        tracking_specs: z.array(z.record(z.string(), z.unknown())).optional(),
         creative_id: z.string().optional().describe("Replace the ad's creative"),
       }),
       annotations: {

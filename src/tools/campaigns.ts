@@ -261,7 +261,7 @@ Returns:
           .optional()
           .describe("If true, set budgets at ad set level instead of campaign level"),
         ab_test_control_setups: z
-          .array(z.record(z.unknown()))
+          .array(z.record(z.string(), z.unknown()))
           .optional()
           .describe("A/B test control setups"),
       }),
