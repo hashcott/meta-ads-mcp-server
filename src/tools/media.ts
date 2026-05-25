@@ -195,6 +195,147 @@ Examples:
     }
   );
 
+  server.registerTool(
+    "meta_ads_get_ad_video",
+    {
+      title: "Get Meta Ad Video",
+      description: `Get video details (source URL, thumbnail, title, duration) for a Meta ad
+video. Provide either ad_id (server resolves the video_id from the ad's creative) or video_id
+directly. Pass act_id when available — the /act_X/advideos edge avoids permission errors
+(#10 / #33) that hit the bare /{video_id} node for BM-shared or page-owned videos.`,
+      inputSchema: z
+        .object({
+          ad_id: z.string().optional(),
+          video_id: z.string().optional(),
+          act_id: z.string().optional(),
+        })
+        .refine((v) => Boolean(v.ad_id) || Boolean(v.video_id), {
+          message: "Provide either ad_id or video_id.",
+        }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ ad_id, video_id, act_id }) => {
+      try {
+        const token = getAccessToken();
+        const videoFields =
+          "source,title,description,length,picture,thumbnails,created_time";
+
+        let resolvedVideoId = video_id ?? "";
+        let resolvedAccount = act_id ?? "";
+        if (resolvedAccount.startsWith("act_")) resolvedAccount = resolvedAccount.slice(4);
+
+        if (!resolvedVideoId && ad_id) {
+          const creatives = (await makeGraphApiCall(`${FB_GRAPH_URL}/${ad_id}/adcreatives`, {
+            access_token: token,
+            fields: "object_story_spec,asset_feed_spec",
+          })) as { data?: Array<Record<string, unknown>> };
+          const first = creatives.data?.[0] ?? {};
+          const oss = (first.object_story_spec as Record<string, unknown> | undefined) ?? {};
+          const videoData = oss.video_data as { video_id?: string } | undefined;
+          if (videoData?.video_id) resolvedVideoId = String(videoData.video_id);
+          if (!resolvedVideoId) {
+            const afs = (first.asset_feed_spec as { videos?: Array<{ video_id?: string }> } | undefined) ?? {};
+            if (afs.videos?.length) resolvedVideoId = String(afs.videos[0].video_id ?? "");
+          }
+          if (!resolvedVideoId) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      error: "No video found in this ad's creative",
+                      hint: "This ad may be an image ad.",
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+        }
+
+        if (!resolvedAccount && ad_id) {
+          const adInfo = (await makeGraphApiCall(`${FB_GRAPH_URL}/${ad_id}`, {
+            access_token: token,
+            fields: "account_id",
+          })) as { account_id?: string };
+          if (adInfo.account_id) resolvedAccount = adInfo.account_id;
+        }
+
+        if (resolvedAccount) {
+          const data = (await makeGraphApiCall(`${FB_GRAPH_URL}/act_${resolvedAccount}/advideos`, {
+            access_token: token,
+            fields: videoFields,
+            filtering: JSON.stringify([{ field: "id", operator: "IN", value: [resolvedVideoId] }]),
+          })) as { data?: unknown[] };
+          if (data.data && data.data.length) {
+            const payload = data.data[0];
+            return {
+              content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+              structuredContent: payload as Record<string, unknown>,
+            };
+          }
+        }
+
+        const data = await makeGraphApiCall(`${FB_GRAPH_URL}/${resolvedVideoId}`, {
+          access_token: token,
+          fields: videoFields,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_get_image_by_hash",
+    {
+      title: "Get Meta Ad Image by Hash",
+      description: `Look up a single image in an ad account's image library by hash. Returns
+the CDN url, dimensions, name, and status — useful when you only have the hash (e.g., from
+upload_ad_image or a creative's object_story_spec.link_data.image_hash) and need the URL.`,
+      inputSchema: z.object({
+        act_id: z.string().describe("Ad account ID prefixed with 'act_' (bare numeric also accepted)"),
+        image_hash: z.string(),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ act_id, image_hash }) => {
+      try {
+        const normalized = act_id.startsWith("act_") ? act_id : `act_${act_id}`;
+        const token = getAccessToken();
+        const url = `${FB_GRAPH_URL}/${normalized}/adimages`;
+        const data = await makeGraphApiCall(url, {
+          access_token: token,
+          fields: "hash,url,width,height,name,status",
+          hashes: JSON.stringify([image_hash]),
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
   // Write/lifecycle tools are gated behind META_ADS_ENABLE_WRITE_TOOLS so
   // dangerous mutations don't ship by default.
   if (!isWriteToolsEnabled()) return;

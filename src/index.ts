@@ -2,17 +2,17 @@
 /**
  * Meta Ads MCP Server
  *
- * MCP server for the Meta (Facebook) Ads API. Provides 32 read tools to
+ * MCP server for the Meta (Facebook) Ads API. Provides 35 read tools to
  * manage and analyze ad accounts, campaigns, ad sets, ads, creatives, media
  * assets, insights, activity logs, targeting catalog (interests/behaviors/
- * geo/demographics + audience-size estimation), and Facebook Pages via the
- * Meta Graph API v22.0.
+ * geo/demographics + audience-size estimation), Facebook Pages, plus a pure
+ * image-crops utility — via the Meta Graph API v22.0.
  *
- * Opt-in: setting META_ADS_ENABLE_WRITE_TOOLS=true also registers 18
+ * Opt-in: setting META_ADS_ENABLE_WRITE_TOOLS=true also registers 19
  * write/lifecycle tools — create/update/delete/pause/resume at the
- * campaign/ad set/ad levels, create/update for ad creatives, and image
- * upload. Off by default — these operations are destructive or hard to
- * reverse.
+ * campaign/ad set/ad levels, create/update for ad creatives, image upload,
+ * and campaign budget schedules. Off by default — these operations are
+ * destructive or hard to reverse.
  *
  * Usage (stdio):
  *   node dist/index.js --access-token <YOUR_META_ACCESS_TOKEN>
@@ -42,6 +42,7 @@ import { registerActivityTools } from "./tools/activities.js";
 import { registerPaginationTools } from "./tools/pagination.js";
 import { registerTargetingTools } from "./tools/targeting.js";
 import { registerPageTools } from "./tools/pages.js";
+import { registerBudgetScheduleTools } from "./tools/budget-schedules.js";
 import { getAccessToken } from "./services/graph-api.js";
 import { isWriteToolsEnabled } from "./constants.js";
 
@@ -61,6 +62,7 @@ registerActivityTools(server);
 registerPaginationTools(server);
 registerTargetingTools(server);
 registerPageTools(server);
+registerBudgetScheduleTools(server);
 
 if (isWriteToolsEnabled()) {
   console.error(

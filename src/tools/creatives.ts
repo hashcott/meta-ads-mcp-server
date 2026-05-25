@@ -11,6 +11,34 @@ import {
 } from "../services/graph-api.js";
 import { FieldsSchema, FilteringSchema, PaginationSchema, DateFormatSchema, EffectiveStatusSchema } from "../schemas/common.js";
 
+const VALID_CROP_KEYS: ReadonlyArray<readonly [string, number, number]> = [
+  ["100x100", 100, 100],
+  ["100x72", 100, 72],
+  ["400x500", 400, 500],
+  ["400x150", 400, 150],
+  ["600x360", 600, 360],
+  ["90x160", 90, 160],
+];
+
+function computeCropBox(srcW: number, srcH: number, kw: number, kh: number): number[][] {
+  const cropWFromH = (srcH * kw) / kh;
+  let cropW: number;
+  let cropH: number;
+  if (cropWFromH <= srcW) {
+    cropW = Math.round(cropWFromH);
+    cropH = srcH;
+  } else {
+    cropW = srcW;
+    cropH = Math.round((srcW * kh) / kw);
+  }
+  const x1 = Math.floor((srcW - cropW) / 2);
+  const y1 = Math.floor((srcH - cropH) / 2);
+  return [
+    [x1, y1],
+    [x1 + cropW, y1 + cropH],
+  ];
+}
+
 const CREATIVE_FIELDS_DESC =
   "Fields to retrieve. Available: id, name, account_id, actor_id, adlabels, asset_feed_spec, authorization_category, body, call_to_action_type, effective_authorization_category, effective_instagram_media_id, effective_object_story_id, image_hash, image_url, instagram_permalink_url, instagram_story_id, instagram_user_id, link_url, object_id, object_story_id, object_story_spec, object_type, object_url, platform_customizations, product_set_id, status, template_url, thumbnail_url, title, url_tags, use_page_actor_override, video_id";
 
@@ -193,6 +221,68 @@ Examples:
       } catch (error) {
         return { content: [{ type: "text", text: handleApiError(error) }] };
       }
+    }
+  );
+
+  // Pure utility — does not call the Meta API. Compute centered crop boxes
+  // for the 6 aspect ratios accepted by create_ad_creative.image_crops.
+  server.registerTool(
+    "meta_ads_compute_image_crops",
+    {
+      title: "Compute Meta Ad Image Crops",
+      description: `Compute image_crops coordinates for a source image. For each requested key,
+returns the largest centered region that fits the source while matching that key's aspect ratio
+(equivalent to Meta's "Original" crop — no content cut beyond the ratio).
+
+Valid keys (Meta accepts only these 6):
+  100x100  — 1:1 square (Feed, Marketplace)
+  100x72   — ~1.39:1 horizontal (Marketplace)
+  400x500  — 4:5 portrait (Feed mobile, Stories fallback)
+  400x150  — ~2.67:1 banner (Audience Network)
+  600x360  — ~1.67:1 horizontal (Right column)
+  90x160   — 9:16 portrait (Stories)
+
+Pass the returned image_crops dict to meta_ads_create_ad_creative.`,
+      inputSchema: z.object({
+        image_width: z.number().int().positive(),
+        image_height: z.number().int().positive(),
+        crop_keys: z.array(z.string()).optional(),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ image_width, image_height, crop_keys }) => {
+      const requested = crop_keys ?? VALID_CROP_KEYS.map(([k]) => k);
+      const keyMap = new Map<string, [number, number]>(
+        VALID_CROP_KEYS.map(([k, w, h]) => [k, [w, h]])
+      );
+      const crops: Record<string, number[][]> = {};
+      const warnings: string[] = [];
+      for (const key of requested) {
+        const dims = keyMap.get(key);
+        if (!dims) {
+          warnings.push(
+            `'${key}' is not a valid Meta crop key. Valid keys: ${VALID_CROP_KEYS.map(([k]) => k).join(", ")}`
+          );
+          continue;
+        }
+        crops[key] = computeCropBox(image_width, image_height, dims[0], dims[1]);
+      }
+      const result: Record<string, unknown> = {
+        image_crops: crops,
+        source_dimensions: { width: image_width, height: image_height },
+        usage:
+          "Pass image_crops directly to meta_ads_create_ad_creative inside object_story_spec.link_data.",
+      };
+      if (warnings.length) result.warnings = warnings;
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
+      };
     }
   );
 
