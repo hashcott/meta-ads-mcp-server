@@ -1,9 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { FB_GRAPH_URL } from "../constants.js";
+import axios from "axios";
+import { FB_GRAPH_URL, isWriteToolsEnabled } from "../constants.js";
 import {
   getAccessToken,
   makeGraphApiCall,
+  makeGraphApiPostCall,
   prepareParams,
   handleApiError,
 } from "../services/graph-api.js";
@@ -183,6 +185,100 @@ Examples:
 
         const params = prepareParams({ access_token: token }, opts);
         const data = await makeGraphApiCall(url, params);
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  // Write/lifecycle tools are gated behind META_ADS_ENABLE_WRITE_TOOLS so
+  // dangerous mutations don't ship by default.
+  if (!isWriteToolsEnabled()) return;
+
+  server.registerTool(
+    "meta_ads_upload_ad_image",
+    {
+      title: "Upload Meta Ad Image",
+      description: `Upload an image to a Meta ad account's ad images library. Returns the image
+hash, which is what create_ad_creative consumes (image_hash field).
+
+Supply EXACTLY ONE of:
+  - file: a data URL ("data:image/png;base64,iVBORw0KG...") or a raw base64 string
+  - image_url: a publicly fetchable URL — the server downloads the bytes and uploads them
+
+Args:
+  - act_id (string): Ad account ID prefixed with 'act_'
+  - file (string, optional): Data URL or raw base64 of the image
+  - image_url (string, optional): Public URL to fetch the image from
+  - name (string, optional): Friendly filename — Meta uses this as the image asset name
+
+Returns:
+  { images: { "<name>": { hash, url, width, height } } } — the Meta CDN url can be opened directly.`,
+      inputSchema: z
+        .object({
+          act_id: z.string(),
+          file: z.string().optional(),
+          image_url: z.string().url().optional(),
+          name: z.string().optional(),
+        })
+        .refine((v) => Boolean(v.file) !== Boolean(v.image_url), {
+          message: "Provide exactly one of 'file' or 'image_url'.",
+        }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ act_id, file, image_url, name }) => {
+      try {
+        let encoded: string;
+        let inferredName = name ?? "";
+
+        if (file) {
+          const dataPrefix = "data:";
+          const marker = "base64,";
+          if (file.startsWith(dataPrefix) && file.includes(marker)) {
+            const [header, payload] = file.split(marker, 2);
+            encoded = payload.trim();
+            if (!inferredName) {
+              const mime = header.slice(dataPrefix.length).split(";")[0].trim();
+              const ext =
+                { "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" }[
+                  mime
+                ] ?? ".png";
+              inferredName = `upload${ext}`;
+            }
+          } else {
+            encoded = file.trim();
+            if (!inferredName) inferredName = "upload.png";
+          }
+        } else {
+          const resp = await axios.get<ArrayBuffer>(image_url!, {
+            responseType: "arraybuffer",
+            timeout: 30000,
+          });
+          encoded = Buffer.from(resp.data).toString("base64");
+          if (!inferredName) {
+            const cleaned = image_url!.split("?")[0];
+            const last = cleaned.substring(cleaned.lastIndexOf("/") + 1);
+            inferredName = last || "upload.jpg";
+          }
+        }
+
+        const finalName = name ?? inferredName;
+        const token = getAccessToken();
+        const url = `${FB_GRAPH_URL}/${act_id}/adimages`;
+        const data = await makeGraphApiPostCall(url, {
+          access_token: token,
+          bytes: encoded,
+          name: finalName,
+        });
         return {
           content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
           structuredContent: data as Record<string, unknown>,

@@ -1,9 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { FB_GRAPH_URL } from "../constants.js";
+import { FB_GRAPH_URL, isWriteToolsEnabled } from "../constants.js";
 import {
   getAccessToken,
   makeGraphApiCall,
+  makeGraphApiPostCall,
+  postNode,
   prepareParams,
   handleApiError,
 } from "../services/graph-api.js";
@@ -184,6 +186,209 @@ Examples:
           { fields, date_format, limit, after, before }
         );
         const data = await makeGraphApiCall(url, params);
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  // Write/lifecycle tools are gated behind META_ADS_ENABLE_WRITE_TOOLS so
+  // dangerous mutations don't ship by default.
+  if (!isWriteToolsEnabled()) return;
+
+  server.registerTool(
+    "meta_ads_create_ad_creative",
+    {
+      title: "Create Meta Ad Creative",
+      description: `Create an ad creative. Three common modes:
+
+  1. Promote an existing organic post:
+       object_story_id: "{page_id}_{post_id}"
+     (image_hash / video_id / page_id not required)
+
+  2. Single-image link ad:
+       page_id, link_url, image_hash, message, headline?, description?, call_to_action_type?
+
+  3. Single-video ad:
+       page_id, link_url, video_id, message, headline?, call_to_action_type?, thumbnail_url?
+
+For advanced modes (FLEX/DOF, Placement Asset Customization, Dynamic Creative, multi-headline
+asset_feed_spec, lead-gen forms, branded content, image_crops, etc.), pass a fully composed
+object_story_spec and/or asset_feed_spec — those override the simple-mode auto-construction.
+
+Args:
+  - act_id (string): Ad account ID prefixed with 'act_'
+  - name (string, optional): Creative name
+  - page_id (string, optional)
+  - link_url (string, optional): Destination URL
+  - image_hash (string, optional): From upload_ad_image
+  - video_id (string, optional)
+  - thumbnail_url (string, optional): Video thumbnail
+  - message / headline / description (string, optional): Ad copy
+  - call_to_action_type (string, optional): e.g., LEARN_MORE, SHOP_NOW, BOOK_NOW, SIGN_UP
+  - object_story_id (string, optional): Mode 1
+  - object_story_spec (object, optional): Full spec — overrides the auto-built one
+  - asset_feed_spec (object, optional): For multi-variant / FLEX creatives
+  - url_tags (string, optional): UTM params appended to the URL`,
+      inputSchema: z
+        .object({
+          act_id: z.string(),
+          name: z.string().optional(),
+          page_id: z.string().optional(),
+          link_url: z.string().optional(),
+          image_hash: z.string().optional(),
+          video_id: z.string().optional(),
+          thumbnail_url: z.string().optional(),
+          message: z.string().optional(),
+          headline: z.string().optional(),
+          description: z.string().optional(),
+          call_to_action_type: z.string().optional(),
+          object_story_id: z.string().optional(),
+          object_story_spec: z.record(z.unknown()).optional(),
+          asset_feed_spec: z.record(z.unknown()).optional(),
+          url_tags: z.string().optional(),
+        })
+        .refine(
+          (v) =>
+            Boolean(v.object_story_id) ||
+            Boolean(v.object_story_spec) ||
+            Boolean(v.asset_feed_spec) ||
+            Boolean(v.image_hash) ||
+            Boolean(v.video_id),
+          {
+            message:
+              "Provide at least one of: object_story_id, object_story_spec, asset_feed_spec, image_hash, video_id.",
+          }
+        ),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args) => {
+      try {
+        const params: Record<string, unknown> = {};
+        if (args.name) params.name = args.name;
+        if (args.url_tags) params.url_tags = args.url_tags;
+        if (args.object_story_id) params.object_story_id = args.object_story_id;
+
+        // If caller passed a full spec, prefer it verbatim. Otherwise build a
+        // minimal one from the simple-mode fields.
+        let spec = args.object_story_spec;
+        if (!spec && !args.object_story_id) {
+          if (!args.page_id) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      error:
+                        "page_id is required when building a creative from simple fields (no object_story_id or object_story_spec).",
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+          if (args.video_id) {
+            const video_data: Record<string, unknown> = { video_id: args.video_id };
+            if (args.message) video_data.message = args.message;
+            if (args.headline) video_data.title = args.headline;
+            if (args.link_url) video_data.link_description = args.link_url;
+            if (args.thumbnail_url) video_data.image_url = args.thumbnail_url;
+            if (args.call_to_action_type) {
+              video_data.call_to_action = {
+                type: args.call_to_action_type,
+                value: args.link_url ? { link: args.link_url } : {},
+              };
+            }
+            spec = { page_id: args.page_id, video_data };
+          } else if (args.image_hash) {
+            const link_data: Record<string, unknown> = {};
+            if (args.link_url) link_data.link = args.link_url;
+            if (args.message) link_data.message = args.message;
+            if (args.headline) link_data.name = args.headline;
+            if (args.description) link_data.description = args.description;
+            link_data.image_hash = args.image_hash;
+            if (args.call_to_action_type) {
+              link_data.call_to_action = {
+                type: args.call_to_action_type,
+                value: args.link_url ? { link: args.link_url } : {},
+              };
+            }
+            spec = { page_id: args.page_id, link_data };
+          }
+        }
+
+        if (spec) params.object_story_spec = JSON.stringify(spec);
+        if (args.asset_feed_spec) {
+          params.asset_feed_spec = JSON.stringify(args.asset_feed_spec);
+        }
+
+        const token = getAccessToken();
+        const url = `${FB_GRAPH_URL}/${args.act_id}/adcreatives`;
+        const data = await makeGraphApiPostCall(url, { access_token: token, ...params });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data as Record<string, unknown>,
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleApiError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "meta_ads_update_ad_creative",
+    {
+      title: "Update Meta Ad Creative",
+      description: `Update an existing creative. Meta restricts what can change on a saved
+creative: 'name' is reliably updatable; content fields (message, headline, image, link)
+are typically rejected. To change ad content, create a new creative and re-point the ad
+via meta_ads_update_ad(creative_id=...).`,
+      inputSchema: z.object({
+        creative_id: z.string(),
+        name: z.string().optional(),
+        asset_feed_spec: z.record(z.unknown()).optional(),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ creative_id, name, asset_feed_spec }) => {
+      try {
+        const params: Record<string, unknown> = {};
+        if (name !== undefined) params.name = name;
+        if (asset_feed_spec !== undefined) {
+          params.asset_feed_spec = JSON.stringify(asset_feed_spec);
+        }
+        if (Object.keys(params).length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  { error: "No update parameters provided (name or asset_feed_spec)." },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+        const data = await postNode(creative_id, params);
         return {
           content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
           structuredContent: data as Record<string, unknown>,
